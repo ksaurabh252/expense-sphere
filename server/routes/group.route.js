@@ -15,6 +15,7 @@ const authMiddleware = require("../middleware/authMiddleware");
 // Create a new group - requires authentication
 router.post("/groups", authMiddleware, createGroup);
 
+// Add a member to a group
 router.post("/:groupId/members", authMiddleware, addMemberToGroup);
 
 // Export router
