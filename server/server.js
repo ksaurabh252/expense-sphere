@@ -11,6 +11,7 @@ const dbConnection = require("./config/db");
 const authRouter = require("./routes/auth.route");
 const profileRouter = require("./routes/user.route");
 const groupRouter = require("./routes/group.route");
+const expenseRouter = require("./routes/expense.route");
 
 // Create Express application
 const app = express();
@@ -38,6 +39,7 @@ app.get("/", (req, res) => {
 app.use("/user", authRouter);
 app.use("/user", profileRouter);
 app.use("/user", groupRouter);
+app.use("/user", expenseRouter);
 
 // Define server port from environment variable or use default port 3000
 const PORT = process.env.PORT || 3001;
