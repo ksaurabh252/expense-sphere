@@ -81,7 +81,7 @@ const addMemberToGroup = async (req, res) => {
     if (!userExists)
       return res.status(400).json({
         success: false,
-        message: "User does not exist",
+        message: `User does not exist`,
       });
 
     // Check if the user is already a member of the group
@@ -113,7 +113,7 @@ const addMemberToGroup = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "Internal server error,add member to grp",
     });
   }
 };
