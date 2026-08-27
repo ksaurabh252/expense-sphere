@@ -5,8 +5,9 @@ const router = express.Router();
 
 // Import authentication middleware
 const authMiddleware = require("../middleware/authMiddleware");
-const createExpense = require("../controllers/expenseController");
+const { createExpense } = require("../controllers/expenseController");
 
+// Handle expense creation
 router.post("/expenses", authMiddleware, createExpense);
 
 // Export router
