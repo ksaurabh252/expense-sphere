@@ -126,4 +126,62 @@ const createExpense = async (req, res) => {
   }
 };
 
-module.exports = createExpense;
+// Get all expenses belonging to a specific group
+// Only group members are allowed to view the expenses
+const getGroupExpenses = async (req, res) => {
+  try {
+    // Get the group ID from request parameters
+    const { groupId } = req.params;
+
+    // Find the group by ID
+    const existingGroup = await groupModel.findById(groupId);
+
+    // Check if the group exists
+    if (!existingGroup)
+      return res.status(400).json({
+        message: "Group not found",
+      });
+
+    // Get the logged-in user's ID
+    const loggedInUserId = req.user.id;
+
+    // Check if the user is a member of the group
+    const isUserGroupMember = existingGroup.members.some(
+      (memberId) => memberId.toString() === loggedInUserId,
+    );
+
+    // Reject the request if the user is not a group member
+    if (!isUserGroupMember)
+      return res.status(400).json({
+        message: "User is not in the group",
+      });
+
+    // Find all expenses belonging to this group
+    const expenses = await expenseModel
+      .find({
+        groupId,
+      })
+      .populate("paidBy", "name")
+      .populate("participants", "name");
+
+    // Send the expenses in the response
+    res.status(200).json({
+      success: true,
+      message: "Response Fetched Successfully",
+      expenses,
+    });
+  } catch (error) {
+    // Handle unexpected server errors
+    console.log(error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error, add member to grp",
+    });
+  }
+};
+
+module.exports = {
+  createExpense,
+  getGroupExpenses,
+};
