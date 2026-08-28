@@ -181,7 +181,87 @@ const getGroupExpenses = async (req, res) => {
   }
 };
 
+// Get group expenses of all members
+const getGroupBalances = async (req, res) => {
+  try {
+    // Get the group ID from request parameters
+    const { groupId } = req.params;
+
+    // Get the logged-in user's ID
+    const loggedInUserId = req.user.id;
+
+    // Find the group by ID
+    const group = await groupModel.findById(groupId);
+
+    // Check if the group exists
+    if (!group)
+      return res.status(400).json({
+        message: "Group not found",
+      });
+
+    // Check if the user is a member of the group
+    const isUserGroupMember = group.members.some(
+      (memberId) => memberId.toString() === loggedInUserId,
+    );
+
+    // Reject the request if the user is not a group member
+    if (!isUserGroupMember)
+      return res.status(400).json({
+        message: "User is not in the group",
+      });
+
+    // Find all expenses belonging to this group
+    const expenses = await expenseModel.find({
+      groupId,
+    });
+
+    // Step-by-step balance calculation
+    const balances = {};
+
+    // Set the initial balance of all group members to 0
+    group.members.forEach((memberId) => {
+      balances[memberId.toString()] = 0;
+    });
+
+    // Calculate the balance for each expense
+    expenses.forEach((exp) => {
+      const payer = exp.paidBy.toString();
+      const splitAmount = exp.amount / exp.participants.length;
+
+      // Credit the full amount to the person who paid
+      balances[payer] = (balances[payer] || 0) + exp.amount;
+
+      // Deduct each participant's share from their balance
+      exp.participants.forEach((participant) => {
+        const participantId = participant.toString();
+        balances[participantId] = (balances[participantId] || 0) - splitAmount;
+      });
+    });
+
+    // Convert the balances object into an array
+    const balancesArray = Object.keys(balances).map((userId) => ({
+      userId: userId,
+      balance: Math.round(balances[userId]), // Round the balance to avoid decimals
+    }));
+
+    // Send response
+    return res.status(200).json({
+      success: true,
+      balances: balancesArray,
+    });
+  } catch (error) {
+    // Handle unexpected server errors
+    console.log(error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error, add member to grp",
+    });
+  }
+};
+
 module.exports = {
   createExpense,
   getGroupExpenses,
+  getGroupBalances,
 };
