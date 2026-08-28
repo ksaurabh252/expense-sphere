@@ -11,7 +11,10 @@ const {
 
 // Import authentication middleware
 const authMiddleware = require("../middleware/authMiddleware");
-const { getGroupExpenses } = require("../controllers/expenseController");
+const {
+  getGroupExpenses,
+  getGroupBalances,
+} = require("../controllers/expenseController");
 
 // Create a new group - requires authentication
 router.post("/groups", authMiddleware, createGroup);
@@ -21,6 +24,9 @@ router.post("/:groupId/members", authMiddleware, addMemberToGroup);
 
 // Get group expenses
 router.get("/:groupId/expenses", authMiddleware, getGroupExpenses);
+
+// Get group Balance
+router.get("/:groupId/balances", authMiddleware, getGroupBalances);
 
 // Export router
 module.exports = router;
