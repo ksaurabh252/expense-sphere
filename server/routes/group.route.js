@@ -9,6 +9,8 @@ const {
   addMemberToGroup,
 } = require("../controllers/groupController");
 
+const { getSettlements } = require("../controllers/settlementController");
+
 // Import authentication middleware
 const authMiddleware = require("../middleware/authMiddleware");
 const {
@@ -27,6 +29,8 @@ router.get("/:groupId/expenses", authMiddleware, getGroupExpenses);
 
 // Get group Balance
 router.get("/:groupId/balances", authMiddleware, getGroupBalances);
+
+router.get("/:groupId/settlements", authMiddleware, getSettlements);
 
 // Export router
 module.exports = router;
