@@ -109,6 +109,45 @@ const createExpense = async (req, res) => {
       participants,
     });
 
+    // Get Socket.IO instance
+    const io = req.app.get("io");
+
+    if (io) {
+      // Notify group members about the new expense
+      io.to(groupId).emit("expense-added", expense);
+
+      // Get all group expenses
+      const allExpenses = await expenseModel.find({ groupId });
+
+      const balances = {};
+
+      // Initialize everyone's balance to 0
+      group.members.forEach((memberId) => {
+        balances[memberId.toString()] = 0;
+      });
+
+      // Calculate fresh balance
+      allExpenses.forEach((exp) => {
+        const payer = exp.paidBy.toString();
+        const splitAmount = exp.amount / exp.participants.length;
+
+        balances[payer] = (balances[payer] || 0) + exp.amount;
+        exp.participants.forEach((part) => {
+          const partId = part.toString();
+          balances[partId] = (balances[partId] || 0) - splitAmount;
+        });
+      });
+
+      // Convert object to array
+      const balancesArray = Object.keys(balances).map((userId) => ({
+        userId,
+        balance: Math.round(balances[userId]),
+      }));
+
+      // Notify group members about updated balances
+      io.to(groupId).emit("balance-updated", balancesArray);
+    }
+
     // 9. Send response
     return res.status(201).json({
       success: true,
