@@ -28,6 +28,26 @@ const io = new Server(server, {
   },
 });
 
+// Make Socket.IO available throughout the application
+app.set("io", io);
+
+// Handle Socket.IO connections
+io.on("connection", (socket) => {
+  // Log when a user connects
+  console.log("Socket connected", socket.id);
+
+  // Join the user to the group room
+  socket.on("join-group", (groupId) => {
+    socket.join(groupId);
+    console.log("User Joined Group", groupId);
+  });
+
+  // Log when the user disconnects
+  socket.on("disconnect", () => {
+    console.log("Socket disconnected:", socket.id);
+  });
+});
+
 // Middleware to parse JSON request bodies
 app.use(express.json());
 
@@ -36,6 +56,7 @@ app.use(express.json());
 app.get("/", (req, res) => {
   res.send("hi");
 });
+
 app.use("/user", authRouter);
 app.use("/user", profileRouter);
 app.use("/user", groupRouter);
