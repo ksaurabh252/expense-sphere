@@ -1,6 +1,8 @@
 const expenseModel = require("../models/expense.model");
 const groupModel = require("../models/group.model");
 
+// const createNotification =
+
 // Create a new expense and calculate equal split
 const createExpense = async (req, res) => {
   try {
@@ -53,7 +55,7 @@ const createExpense = async (req, res) => {
       });
     }
 
-    // 2. Only equal split is supported for now
+    // Only equal split is supported for now
     if (splitType !== "equal") {
       return res.status(400).json({
         success: false,
@@ -61,7 +63,7 @@ const createExpense = async (req, res) => {
       });
     }
 
-    // 3. Check if group exists
+    // Check if group exists
     const group = await groupModel.findById(groupId);
 
     if (!group) {
@@ -71,10 +73,10 @@ const createExpense = async (req, res) => {
       });
     }
 
-    // 4. Convert group member IDs to strings
+    // Convert group member IDs to strings
     const groupMemberIds = group.members.map((memberId) => memberId.toString());
 
-    // 5. Check if paidBy is a group member
+    // Check if paidBy is a group member
     const isPaidByMember = groupMemberIds.includes(paidBy.toString());
 
     if (!isPaidByMember) {
@@ -84,7 +86,7 @@ const createExpense = async (req, res) => {
       });
     }
 
-    // 6. Check if all participants are group members
+    // Check if all participants are group members
     const areAllParticipantsMembers = participants.every((participantId) =>
       groupMemberIds.includes(participantId.toString()),
     );
@@ -96,10 +98,10 @@ const createExpense = async (req, res) => {
       });
     }
 
-    // 7. Calculate equal split
+    // Calculate equal split
     const equalSplit = amount / participants.length;
 
-    // 8. Create expense
+    // Create expense
     const expense = await expenseModel.create({
       groupId,
       description,
@@ -132,8 +134,10 @@ const createExpense = async (req, res) => {
         const splitAmount = exp.amount / exp.participants.length;
 
         balances[payer] = (balances[payer] || 0) + exp.amount;
+
         exp.participants.forEach((part) => {
           const partId = part.toString();
+
           balances[partId] = (balances[partId] || 0) - splitAmount;
         });
       });
@@ -144,11 +148,37 @@ const createExpense = async (req, res) => {
         balance: Math.round(balances[userId]),
       }));
 
+      // Get payer ID
+      const payerId = expense.paidBy.toString();
+
+      // Get payer details
+      const payerUser = await userModel.findById(payerId);
+
+      const payerName = payerUser ? payerUser.name : "A member";
+
+      // Notify only participants other than the payer
+      const userToNotify = expense.participants.filter(
+        (participantId) => participantId.toString() !== payerId,
+      );
+
+      // Create notification for each participant
+      for (const userId of userToNotify) {
+        const notification = await notificationModel.create({
+          userId,
+          groupId: expense.groupId,
+          message: `${payerName} added a new expense: ${expense.description} of ₹${expense.amount}`,
+          type: "expense",
+        });
+
+        // Send notification in real time
+        io.to(groupId).emit("notification-new", notification);
+      }
+
       // Notify group members about updated balances
       io.to(groupId).emit("balance-updated", balancesArray);
     }
 
-    // 9. Send response
+    // Send response
     return res.status(201).json({
       success: true,
       message: "Expense created successfully",
