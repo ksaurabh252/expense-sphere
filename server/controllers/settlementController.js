@@ -1,6 +1,8 @@
 const groupModel = require("../models/group.model");
 const expenseModel = require("../models/expense.model");
 const settlementModel = require("../models/settlement.model");
+const userModel = require("../models/user.model");
+const notificationModel = require("../models/notification.model");
 
 // Helper function: Calculate the final balance of all group members
 const calculateNetBalances = async (groupId, groupMembers) => {
@@ -177,9 +179,9 @@ const markSettled = async (req, res) => {
     const from = req.user.id;
 
     // Validate required fields
-    if (!groupId || !to || !amount) {
+    if (!groupId || !to || !amount || amount <= 0) {
       return res.status(400).json({
-        message: "groupId, to, and amount are required",
+        message: "groupId, to, and valid amount are required",
       });
     }
 
@@ -240,6 +242,24 @@ const markSettled = async (req, res) => {
 
       // Send updated balances to all users in the group
       io.to(groupId).emit("balance-updated", balancesArray);
+
+      // Get sender and receiver user details
+      const senderUser = await userModel.findById(from);
+      const receiverUser = await userModel.findById(to);
+
+      const senderName = senderUser ? senderUser.name : "Someone";
+      const receiverName = receiverUser ? receiverUser.name : "Someone";
+
+      // Create settlement notification for receiver
+      const notification = await notificationModel.create({
+        userId: to,
+        groupId,
+        message: `${senderName} settled ₹${amount} with ${receiverName}`,
+        type: "settlement",
+      });
+
+      // Emit new notification to all users in the group
+      io.to(groupId).emit("notification-new", notification);
     }
 
     // Send success response
@@ -249,7 +269,7 @@ const markSettled = async (req, res) => {
       settlement,
     });
   } catch (error) {
-    console.error(error);
+    console.error("Error in markSettled:", error);
 
     // Handle server errors
     res.status(500).json({
