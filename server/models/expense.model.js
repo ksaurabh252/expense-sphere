@@ -17,7 +17,6 @@ const expenseSchema = new mongoose.Schema(
     amount: {
       type: Number,
       required: true,
-      min: [1, "Amount must be greater than 0"],
     },
 
     paidBy: {
@@ -28,21 +27,32 @@ const expenseSchema = new mongoose.Schema(
 
     splitType: {
       type: String,
-      enum: ["equal", "exact", "percentage"],
-      default: "equal",
+      enum: ["equal", "unequal", "percentage"],
+      required: true,
     },
 
     participants: [
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
-        required: true,
+      },
+    ],
+
+    splits: [
+      {
+        userId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          required: true,
+        },
+        amount: {
+          type: Number,
+          required: true,
+        },
       },
     ],
   },
-  {
-    timestamps: true,
-  },
+  { timestamps: true },
 );
 
 module.exports = mongoose.model("Expense", expenseSchema);
