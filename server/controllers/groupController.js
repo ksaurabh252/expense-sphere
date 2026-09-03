@@ -1,3 +1,4 @@
+const { client } = require("../config/redis");
 const groupModel = require("../models/group.model");
 const userModel = require("../models/user.model");
 
@@ -117,7 +118,54 @@ const addMemberToGroup = async (req, res) => {
     });
   }
 };
+
+const getGroups = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    if (!userId) {
+      return res.status(401).json({
+        message: "Unauthorized user",
+      });
+    }
+
+    const cacheKey = `groups:${userId}`;
+
+    // 1. Check Redis Cache
+    const cachedGroups = await client.get(cacheKey);
+    if (cachedGroups) {
+      return res.status(200).json({
+        success: true,
+        source: "cache",
+        groups: JSON.parse(cachedGroups),
+      });
+    }
+
+    // 2. Fetch from MongoDB (Cache Miss)
+    const groups = await groupModel.find({
+      members: userId,
+    });
+
+    // 3. Save to Redis (TTL: 1 hour)
+    await client.set(cacheKey, JSON.stringify(groups), {
+      EX: 3600,
+    });
+
+    return res.status(200).json({
+      success: true,
+      source: "database",
+      groups,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+  }
+};
+
 module.exports = {
   createGroup,
   addMemberToGroup,
+  getGroups,
 };
