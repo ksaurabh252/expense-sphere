@@ -1,9 +1,9 @@
 const expenseModel = require("../models/expense.model");
 const groupModel = require("../models/group.model");
+const userModel = require("../models/user.model");
+const notificationModel = require("../models/notification.model");
 
-// const createNotification =
-
-// Create a new expense and calculate equal split
+// Create a new expense with equal, unequal, or percentage split
 const createExpense = async (req, res) => {
   try {
     const {
@@ -13,6 +13,7 @@ const createExpense = async (req, res) => {
       paidBy,
       splitType = "equal",
       participants,
+      splits,
     } = req.body;
 
     // 1. Basic validations
@@ -44,25 +45,6 @@ const createExpense = async (req, res) => {
       });
     }
 
-    if (
-      !participants ||
-      !Array.isArray(participants) ||
-      participants.length === 0
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Please provide valid participants list",
-      });
-    }
-
-    // Only equal split is supported for now
-    if (splitType !== "equal") {
-      return res.status(400).json({
-        success: false,
-        message: "Only equal split is supported",
-      });
-    }
-
     // Check if group exists
     const group = await groupModel.findById(groupId);
 
@@ -86,20 +68,142 @@ const createExpense = async (req, res) => {
       });
     }
 
-    // Check if all participants are group members
-    const areAllParticipantsMembers = participants.every((participantId) =>
-      groupMemberIds.includes(participantId.toString()),
-    );
+    // SPLIT TYPE VALIDATION LOGIC
+    let calculatedSplits = [];
+    let finalParticipants = [];
 
-    if (!areAllParticipantsMembers) {
-      return res.status(400).json({
-        success: false,
-        message: "One or more participants are not members of this group",
-      });
+    // CASE A: Equal Split
+    if (splitType === "equal") {
+      if (
+        !participants ||
+        !Array.isArray(participants) ||
+        participants.length === 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Please provide valid participants list",
+        });
+      }
+
+      // Check if all participants are group members
+      const areAllParticipantsMembers = participants.every((participantId) =>
+        groupMemberIds.includes(participantId.toString()),
+      );
+
+      if (!areAllParticipantsMembers) {
+        return res.status(400).json({
+          success: false,
+          message: "One or more participants are not members of this group",
+        });
+      }
+
+      finalParticipants = participants;
+
+      // Calculate equal split
+      const equalSplit = amount / participants.length;
+
+      calculatedSplits = participants.map((participantId) => ({
+        userId: participantId,
+        amount: equalSplit,
+      }));
     }
 
-    // Calculate equal split
-    const equalSplit = amount / participants.length;
+    // CASE B: Unequal Split
+    else if (splitType === "unequal") {
+      if (!splits || !Array.isArray(splits) || splits.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Splits details are required for unequal split",
+        });
+      }
+
+      // Check sum of unequal split amounts
+      const totalSplitSum = splits.reduce(
+        (sum, item) => sum + Number(item.amount),
+        0,
+      );
+
+      if (Math.round(totalSplitSum) !== Math.round(amount)) {
+        return res.status(400).json({
+          success: false,
+          message: `Sum of split amounts (${totalSplitSum}) must equal the total expense amount (${amount})`,
+        });
+      }
+
+      // Extract participants
+      finalParticipants = splits.map((split) => split.userId);
+
+      // Check if all participants are group members
+      const areAllParticipantsMembers = finalParticipants.every(
+        (participantId) => groupMemberIds.includes(participantId.toString()),
+      );
+
+      if (!areAllParticipantsMembers) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "One or more split participants are not members of this group",
+        });
+      }
+
+      calculatedSplits = splits.map((split) => ({
+        userId: split.userId,
+        amount: Number(split.amount),
+      }));
+    }
+
+    // CASE C: Percentage Split
+    else if (splitType === "percentage") {
+      if (!splits || !Array.isArray(splits) || splits.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Splits percentages are required for percentage split",
+        });
+      }
+
+      // Check sum of percentages is exactly 100%
+      const totalPercentageSum = splits.reduce(
+        (sum, item) => sum + Number(item.percent),
+        0,
+      );
+
+      if (totalPercentageSum !== 100) {
+        return res.status(400).json({
+          success: false,
+          message: `Total percentage must equal exactly 100%. Current sum: ${totalPercentageSum}%`,
+        });
+      }
+
+      // Extract participants
+      finalParticipants = splits.map((split) => split.userId);
+
+      // Check if all participants are group members
+      const areAllParticipantsMembers = finalParticipants.every(
+        (participantId) => groupMemberIds.includes(participantId.toString()),
+      );
+
+      if (!areAllParticipantsMembers) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "One or more percentage participants are not members of this group",
+        });
+      }
+
+      // Convert percentage to actual amount
+      calculatedSplits = splits.map((split) => ({
+        userId: split.userId,
+        amount: amount * (Number(split.percent) / 100),
+      }));
+    }
+
+    // Invalid split type
+    else {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid split type",
+      });
+    }
 
     // Create expense
     const expense = await expenseModel.create({
@@ -108,7 +212,8 @@ const createExpense = async (req, res) => {
       amount,
       paidBy,
       splitType,
-      participants,
+      participants: finalParticipants,
+      splits: calculatedSplits,
     });
 
     // Get Socket.IO instance
@@ -131,14 +236,14 @@ const createExpense = async (req, res) => {
       // Calculate fresh balance
       allExpenses.forEach((exp) => {
         const payer = exp.paidBy.toString();
-        const splitAmount = exp.amount / exp.participants.length;
 
         balances[payer] = (balances[payer] || 0) + exp.amount;
 
-        exp.participants.forEach((part) => {
-          const partId = part.toString();
+        // Use saved splits for equal, unequal and percentage
+        exp.splits.forEach((split) => {
+          const partId = split.userId.toString();
 
-          balances[partId] = (balances[partId] || 0) - splitAmount;
+          balances[partId] = (balances[partId] || 0) - split.amount;
         });
       });
 
@@ -166,7 +271,7 @@ const createExpense = async (req, res) => {
         const notification = await notificationModel.create({
           userId,
           groupId: expense.groupId,
-          message: `${payerName} added a new expense: ${expense.description} of ₹${expense.amount}`,
+          message: `${payerName} added a new expense: ${expense.description} of ₹${expense.amount} (${splitType} split)`,
           type: "expense",
         });
 
@@ -183,7 +288,6 @@ const createExpense = async (req, res) => {
       success: true,
       message: "Expense created successfully",
       expense,
-      equalSplit,
     });
   } catch (error) {
     console.error(error);
