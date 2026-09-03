@@ -12,6 +12,7 @@ const authRouter = require("./routes/auth.route");
 const profileRouter = require("./routes/user.route");
 const groupRouter = require("./routes/group.route");
 const expenseRouter = require("./routes/expense.route");
+const { start } = require("./config/redis");
 
 // Create Express application
 const app = express();
@@ -24,7 +25,7 @@ const io = new Server(server, {
   cors: {
     // Allow frontend application to connect
     origin: "http://localhost:5173",
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "PUT", "DELETE"],
   },
 });
 
@@ -69,6 +70,7 @@ const PORT = process.env.PORT || 3001;
 const startServer = async () => {
   try {
     await dbConnection();
+    await start();
     console.log("Database connected successfully.");
 
     server.listen(PORT, () => {
