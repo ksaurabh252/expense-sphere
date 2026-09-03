@@ -7,6 +7,7 @@ const router = express.Router();
 const {
   createGroup,
   addMemberToGroup,
+  getGroups,
 } = require("../controllers/groupController");
 
 const { getSettlements } = require("../controllers/settlementController");
@@ -17,6 +18,9 @@ const {
   getGroupExpenses,
   getGroupBalances,
 } = require("../controllers/expenseController");
+
+//Get group
+router.get("/groups", authMiddleware, getGroups);
 
 // Create a new group - requires authentication
 router.post("/groups", authMiddleware, createGroup);
