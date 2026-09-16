@@ -52,6 +52,15 @@ io.on("connection", (socket) => {
 // Middleware to parse JSON request bodies
 app.use(express.json());
 
+// Allow the Vite dev server to call the API from the browser.
+app.use(
+  cors({
+    origin: ["http://localhost:5173", "http://127.0.0.1:5173"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  }),
+);
+
 // dbConnection();
 
 app.get("/", (req, res) => {
@@ -70,8 +79,17 @@ const PORT = process.env.PORT || 3001;
 const startServer = async () => {
   try {
     await dbConnection();
-    await start();
     console.log("Database connected successfully.");
+
+    // Redis is an optional cache. If it is unavailable the API still works,
+    // it just reads straight from MongoDB.
+    try {
+      await start();
+    } catch (error) {
+      console.warn(
+        `Redis unavailable (${error.message}). Continuing without cache.`,
+      );
+    }
 
     server.listen(PORT, () => {
       console.log("Server started at", new Date().toLocaleTimeString());
