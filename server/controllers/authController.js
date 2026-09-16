@@ -30,10 +30,13 @@ const signUp = async (req, res) => {
       password: hashPassword,
     });
 
+    // Remove password before sending user data
+    const { password: _, ...userData } = newUser.toObject();
+
     //Success message
     return res
       .status(200)
-      .json({ message: "User Registered successfully", newUser });
+      .json({ message: "User Registered successfully", newUser: userData });
   } catch (error) {
     console.error(error);
     res.status(500).json({
@@ -100,11 +103,16 @@ const logout = async (req, res) => {
 
 const resetPassword = async (req, res) => {
   try {
-    const { email, password, confirmPassword } = req.body();
+    const { email, password, confirmPassword } = req.body;
 
     const user = await userModel.findOne({ email });
     if (!user) return res.status(200).json({ message: "User not found " });
-  } catch (error) {}
+  } catch (error) {
+    console.error(error);
+
+    // Handle server error
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
 };
 
 module.exports = { signUp, login, logout, resetPassword };
