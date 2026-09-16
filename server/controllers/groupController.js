@@ -1,6 +1,18 @@
-const { client } = require("../config/redis");
+const { client, isReady } = require("../config/redis");
 const groupModel = require("../models/group.model");
 const userModel = require("../models/user.model");
+
+// Cache key used by getGroups for a given user
+const groupsCacheKey = (userId) => `groups:${userId}`;
+
+// Drop the cached group list for one or more users.
+// Safe to call when Redis is unavailable.
+const invalidateGroupCache = async (userIds) => {
+  if (!isReady()) return;
+  const ids = (Array.isArray(userIds) ? userIds : [userIds]).filter(Boolean);
+  if (ids.length === 0) return;
+  await client.del(ids.map((id) => groupsCacheKey(id.toString())));
+};
 
 const createGroup = async (req, res) => {
   try {
@@ -31,6 +43,9 @@ const createGroup = async (req, res) => {
       createdBy: req.user.id,
       members: [req.user.id],
     });
+
+    // The cached group list is now stale
+    await invalidateGroupCache(req.user.id);
 
     // Send success response
     res.status(201).json({
@@ -103,6 +118,9 @@ const addMemberToGroup = async (req, res) => {
     // Save the updated group
     await existingGroup.save();
 
+    // Every member's cached group list is now stale
+    await invalidateGroupCache(existingGroup.members);
+
     // Send success response
     res.status(200).json({
       message: "Member added successfully",
@@ -122,33 +140,39 @@ const addMemberToGroup = async (req, res) => {
 const getGroups = async (req, res) => {
   try {
     const userId = req.user.id;
+
+    //Check if user exists or not
     if (!userId) {
       return res.status(401).json({
         message: "Unauthorized user",
       });
     }
 
-    const cacheKey = `groups:${userId}`;
+    const cacheKey = groupsCacheKey(userId);
 
-    // 1. Check Redis Cache
-    const cachedGroups = await client.get(cacheKey);
-    if (cachedGroups) {
-      return res.status(200).json({
-        success: true,
-        source: "cache",
-        groups: JSON.parse(cachedGroups),
-      });
+    // Check Redis Cache (skipped entirely when Redis is unavailable)
+    if (isReady()) {
+      const cachedGroups = await client.get(cacheKey);
+      if (cachedGroups) {
+        return res.status(200).json({
+          success: true,
+          source: "cache",
+          groups: JSON.parse(cachedGroups),
+        });
+      }
     }
 
-    // 2. Fetch from MongoDB (Cache Miss)
+    // Fetch from MongoDB (Cache Miss)
     const groups = await groupModel.find({
       members: userId,
     });
 
-    // 3. Save to Redis (TTL: 1 hour)
-    await client.set(cacheKey, JSON.stringify(groups), {
-      EX: 3600,
-    });
+    // Save to Redis (TTL: 1 hour)
+    if (isReady()) {
+      await client.set(cacheKey, JSON.stringify(groups), {
+        EX: 3600,
+      });
+    }
 
     return res.status(200).json({
       success: true,
