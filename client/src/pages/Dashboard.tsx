@@ -98,7 +98,7 @@ const Dashboard = () => {
   return (
     <div className="space-y-7">
       <header>
-        <h1 className="text-[22px] font-semibold tracking-[-0.025em] text-foreground">
+        <h1 className="text-[22px] font-semibold tracking-tight text-foreground">
           {getGreeting()}, {getFirstName(user?.name)}
         </h1>
         <p className="mt-1.5 text-[13px] leading-6 text-muted-foreground">
