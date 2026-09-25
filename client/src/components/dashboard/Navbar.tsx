@@ -1,10 +1,15 @@
-import { Bell, Menu, Search } from "lucide-react";
+import { Menu, Search } from "lucide-react";
 import { getInitials } from "../../lib/format";
+import NotificationBell from "../NotificationBell";
+import type { AppNotification } from "../../services/notificationApi";
 
 interface NavbarProps {
   userName: string;
   userEmail: string;
   unreadCount?: number;
+  notifications: AppNotification[];
+  onMarkRead: (id: string) => void;
+  onMarkAllRead: () => void;
   searchValue: string;
   onSearchChange: (value: string) => void;
   onOpenSidebar: () => void;
@@ -14,6 +19,9 @@ const Navbar = ({
   userName,
   userEmail,
   unreadCount = 0,
+  notifications,
+  onMarkRead,
+  onMarkAllRead,
   searchValue,
   onSearchChange,
   onOpenSidebar,
@@ -28,7 +36,7 @@ const Navbar = ({
           aria-label="Open navigation"
           className="-ml-1 flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:hidden"
         >
-          <Menu className="size-[18px]" />
+          <Menu className="size-4.5" />
         </button>
 
         <div className="flex shrink-0 items-center gap-2 lg:hidden">
@@ -60,25 +68,15 @@ const Navbar = ({
             aria-label="Search groups"
             className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:hidden"
           >
-            <Search className="size-[18px]" />
+            <Search className="size-4.5" />
           </button>
 
-          <button
-            type="button"
-            aria-label={
-              unreadCount > 0
-                ? `Notifications, ${unreadCount} unread`
-                : "Notifications"
-            }
-            className="relative flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <Bell className="size-[18px]" />
-            {unreadCount > 0 && (
-              <span className="absolute right-1.5 top-1.5 flex min-w-4 items-center justify-center rounded-full bg-[var(--auth-accent)] px-1 text-[10px] font-semibold leading-4 text-white">
-                {unreadCount > 9 ? "9+" : unreadCount}
-              </span>
-            )}
-          </button>
+          <NotificationBell
+            notifications={notifications}
+            unreadCount={unreadCount}
+            onMarkRead={onMarkRead}
+            onMarkAllRead={onMarkAllRead}
+          />
 
           <span className="mx-1 hidden h-6 w-px bg-border/70 sm:block" />
 
@@ -90,10 +88,10 @@ const Navbar = ({
               {getInitials(userName)}
             </span>
             <span className="hidden text-left leading-tight sm:block">
-              <span className="block max-w-[9rem] truncate text-[13px] font-medium text-foreground">
+              <span className="block max-w-36 truncate text-[13px] font-medium text-foreground">
                 {userName}
               </span>
-              <span className="block max-w-[9rem] truncate text-[11px] text-muted-foreground">
+              <span className="block max-w-36 truncate text-[11px] text-muted-foreground">
                 {userEmail}
               </span>
             </span>
