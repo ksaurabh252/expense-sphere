@@ -2,11 +2,10 @@ const { client, isReady } = require("../config/redis");
 const groupModel = require("../models/group.model");
 const userModel = require("../models/user.model");
 
-// Cache key used by getGroups for a given user
+// Create a cache key for a user's groups
 const groupsCacheKey = (userId) => `groups:${userId}`;
 
-// Drop the cached group list for one or more users.
-// Safe to call when Redis is unavailable.
+// Clear the cached groups for the given users
 const invalidateGroupCache = async (userIds) => {
   if (!isReady()) return;
   const ids = (Array.isArray(userIds) ? userIds : [userIds]).filter(Boolean);
@@ -14,6 +13,7 @@ const invalidateGroupCache = async (userIds) => {
   await client.del(ids.map((id) => groupsCacheKey(id.toString())));
 };
 
+// Create a new group
 const createGroup = async (req, res) => {
   try {
     const { name, description } = req.body;
@@ -44,7 +44,7 @@ const createGroup = async (req, res) => {
       members: [req.user.id],
     });
 
-    // The cached group list is now stale
+    // Clear the user's cached group list
     await invalidateGroupCache(req.user.id);
 
     // Send success response
@@ -62,6 +62,7 @@ const createGroup = async (req, res) => {
   }
 };
 
+// Add a user to an existing group
 const addMemberToGroup = async (req, res) => {
   try {
     // Get group ID from URL params
@@ -85,13 +86,14 @@ const addMemberToGroup = async (req, res) => {
     const isGroupMember = existingGroup.members.some((memberId) => {
       return memberId.toString() === loggedInUserId;
     });
+
     if (!isGroupMember)
       return res.status(400).json({
         success: false,
         message: `You are not a member of ${existingGroup.name}`,
       });
 
-    // Check if the user to be added exists in the database
+    // Check if the user to be added exists
     const userExists = await userModel.findById(userId);
 
     if (!userExists)
@@ -100,7 +102,7 @@ const addMemberToGroup = async (req, res) => {
         message: `User does not exist`,
       });
 
-    // Check if the user is already a member of the group
+    // Check if the user is already a member
     const isAlreadyMember = existingGroup.members.some(
       (memberId) => memberId.toString() === userId,
     );
@@ -118,13 +120,12 @@ const addMemberToGroup = async (req, res) => {
     // Save the updated group
     await existingGroup.save();
 
-    // Every member's cached group list is now stale
+    // Clear cached groups for all members
     await invalidateGroupCache(existingGroup.members);
 
     // Send success response
     res.status(200).json({
       message: "Member added successfully",
-      // existingGroup,
     });
   } catch (error) {
     // Handle unexpected server errors
@@ -137,11 +138,12 @@ const addMemberToGroup = async (req, res) => {
   }
 };
 
+// Get all groups that the logged-in user belongs to
 const getGroups = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    //Check if user exists or not
+    // Check if user exists or not
     if (!userId) {
       return res.status(401).json({
         message: "Unauthorized user",
@@ -153,6 +155,7 @@ const getGroups = async (req, res) => {
     // Check Redis Cache (skipped entirely when Redis is unavailable)
     if (isReady()) {
       const cachedGroups = await client.get(cacheKey);
+
       if (cachedGroups) {
         return res.status(200).json({
           success: true,
@@ -162,12 +165,12 @@ const getGroups = async (req, res) => {
       }
     }
 
-    // Fetch from MongoDB (Cache Miss)
+    //  Fetch from MongoDB (Cache Miss)
     const groups = await groupModel.find({
       members: userId,
     });
 
-    // Save to Redis (TTL: 1 hour)
+    // Save groups to Redis cache for 1 hour
     if (isReady()) {
       await client.set(cacheKey, JSON.stringify(groups), {
         EX: 3600,
@@ -180,7 +183,49 @@ const getGroups = async (req, res) => {
       groups,
     });
   } catch (error) {
+    // Handle server error
     console.error(error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+  }
+};
+
+// Get a single group by its ID
+const getGroupById = async (req, res) => {
+  try {
+    const { groupId } = req.params;
+
+    // Find the group and populate member details
+    const group = await groupModel
+      .findById(groupId)
+      .populate("members", "name email");
+
+    if (!group)
+      return res.status(400).json({
+        message: "Group not found",
+      });
+
+    // Check if the logged-in user is a member
+    const isGroupMember = group.members.some(
+      (member) => member._id.toString() === req.user.id,
+    );
+
+    if (!isGroupMember)
+      return res.status(400).json({
+        message: "User is not in the group",
+      });
+
+    return res.status(200).json({
+      success: true,
+      group,
+    });
+  } catch (error) {
+    // Handle server error
+    console.error(error);
+
     return res.status(500).json({
       success: false,
       message: "Internal Server Error",
@@ -192,4 +237,5 @@ module.exports = {
   createGroup,
   addMemberToGroup,
   getGroups,
+  getGroupById,
 };
