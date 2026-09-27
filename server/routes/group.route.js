@@ -8,9 +8,13 @@ const {
   createGroup,
   addMemberToGroup,
   getGroups,
+  getGroupById,
 } = require("../controllers/groupController");
 
-const { getSettlements } = require("../controllers/settlementController");
+const {
+  getSettlements,
+  markSettled,
+} = require("../controllers/settlementController");
 
 // Import authentication middleware
 const authMiddleware = require("../middleware/authMiddleware");
@@ -24,6 +28,12 @@ router.get("/groups", authMiddleware, getGroups);
 
 // Create a new group - requires authentication
 router.post("/groups", authMiddleware, createGroup);
+
+// Get one group with its members - requires authentication
+router.get("/:groupId", authMiddleware, getGroupById);
+
+// Record a payment between two members - requires authentication
+router.post("/settlements", authMiddleware, markSettled);
 
 // Add a member to a group
 router.post("/:groupId/members", authMiddleware, addMemberToGroup);
