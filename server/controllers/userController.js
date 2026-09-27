@@ -89,5 +89,32 @@ const updateProfile = async (req, res) => {
   }
 };
 
+// Find users by name or email, so a group member can be looked up to add
+const searchUsers = async (req, res) => {
+  try {
+    const term = (req.query.q || "").trim();
+
+    if (!term) {
+      return res.status(200).json({ users: [] });
+    }
+
+    const users = await userModel
+      .find({
+        _id: { $ne: req.user.id },
+        $or: [
+          { name: { $regex: term, $options: "i" } },
+          { email: { $regex: term, $options: "i" } },
+        ],
+      })
+      .select("name email")
+      .limit(10);
+
+    return res.status(200).json({ users });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
 // Export controller functions
-module.exports = { getProfile, updateProfile };
+module.exports = { getProfile, updateProfile, searchUsers };
