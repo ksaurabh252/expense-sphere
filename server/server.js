@@ -12,6 +12,7 @@ const authRouter = require("./routes/auth.route");
 const profileRouter = require("./routes/user.route");
 const groupRouter = require("./routes/group.route");
 const expenseRouter = require("./routes/expense.route");
+const notificationRouter = require("./routes/notification.routes");
 const { start } = require("./config/redis");
 
 // Create Express application
@@ -69,6 +70,7 @@ app.get("/", (req, res) => {
 
 app.use("/user", authRouter);
 app.use("/user", profileRouter);
+app.use("/user", notificationRouter);
 app.use("/user", groupRouter);
 app.use("/user", expenseRouter);
 
