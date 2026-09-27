@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useOutletContext } from "react-router";
+import { useNavigate } from "react-router";
 import {
   AlertCircle,
   BellOff,
@@ -9,23 +9,23 @@ import {
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import type { ShellContext } from "../components/dashboard/AppLayout";
+import { useSocket } from "../context/SocketContext";
 import {
-  ApiError,
-  clearSession,
-  getGroups,
-  getNotifications,
-  markAllNotificationsRead,
-  markNotificationRead,
+  fetchNotifications,
+  markAllRead,
+  markRead,
   type AppNotification,
-} from "../services/api";
+} from "../services/notificationApi";
+import { ApiError, clearSession, getUser, getGroups } from "../services/api";
 import { formatRelativeTime } from "../lib/format";
 
 type LoadStatus = "loading" | "ready" | "error";
 
 const Notifications = () => {
-  // The header is driven by the list we are actually showing, so the numbers
-  // on screen can never disagree with the rows below them.
+  const navigate = useNavigate();
   const { refreshUnreadCount } = useOutletContext<ShellContext>();
+  const socket = useSocket();
+  const currentUserId = getUser()?._id ?? "";
 
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [groupNames, setGroupNames] = useState<Record<string, string>>({});
@@ -39,23 +39,34 @@ const Notifications = () => {
     setError("");
 
     try {
-      // Group names are only used as a label, so a failure there must not
-      // stop the notifications from rendering.
       const [result, groups] = await Promise.all([
-        getNotifications(),
+        fetchNotifications(),
         getGroups().catch(() => []),
       ]);
 
-      setNotifications(result.notifications);
+      setNotifications((previous) => {
+        const fetchedIds = new Set(
+          result.notifications.map((item) => item._id),
+        );
+
+        return [
+          ...result.notifications,
+          ...previous.filter((item) => !fetchedIds.has(item._id)),
+        ];
+      });
+
       setGroupNames(
         Object.fromEntries(groups.map((group) => [group.id, group.name])),
       );
+
       setStatus("ready");
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 401) {
         clearSession();
+        navigate("/auth", { replace: true });
         return;
       }
+
       setError(
         caught instanceof Error
           ? caught.message
@@ -63,28 +74,60 @@ const Notifications = () => {
       );
       setStatus("error");
     }
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  // Receive notifications in realtime without requiring a page refresh.
+  useEffect(() => {
+    if (!socket || !currentUserId) return;
+
+    const onNotificationNew = (notification: AppNotification) => {
+      // The socket room may contain notifications for multiple users.
+      if (!notification?.userId || notification.userId !== currentUserId) {
+        return;
+      }
+
+      setNotifications((previous) => {
+        // Socket reconnects/retries must not create duplicate rows.
+        if (previous.some((item) => item._id === notification._id)) {
+          return previous;
+        }
+
+        return [notification, ...previous];
+      });
+
+      // Keep the app-shell notification badge synchronized.
+      void refreshUnreadCount();
+    };
+
+    socket.on("notification-new", onNotificationNew);
+
+    return () => {
+      socket.off("notification-new", onNotificationNew);
+    };
+  }, [socket, currentUserId, refreshUnreadCount]);
+
   const handleMarkRead = useCallback(
     async (id: string) => {
       if (markingId) return;
+
       setMarkingId(id);
 
       try {
-        await markNotificationRead(id);
-        setNotifications((prev) =>
-          prev.map((item) =>
+        await markRead(id);
+
+        setNotifications((previous) =>
+          previous.map((item) =>
             item._id === id ? { ...item, isRead: true } : item,
           ),
         );
-        // Keep the shell badge in step with what is on screen.
+
         await refreshUnreadCount();
       } catch {
-        // Leave the row unread so the user can retry.
+        // Keep the notification unread so the user can retry.
       } finally {
         setMarkingId(null);
       }
@@ -93,18 +136,24 @@ const Notifications = () => {
   );
 
   const handleMarkAll = useCallback(async () => {
+    if (markingAll) return;
+
     setMarkingAll(true);
 
     try {
-      await markAllNotificationsRead();
-      setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
+      await markAllRead();
+
+      setNotifications((previous) =>
+        previous.map((item) => ({ ...item, isRead: true })),
+      );
+
       await refreshUnreadCount();
     } catch {
-      // Nothing changed locally, so the UI stays truthful.
+      // Keep the current state if the server request fails.
     } finally {
       setMarkingAll(false);
     }
-  }, [refreshUnreadCount]);
+  }, [markingAll, refreshUnreadCount]);
 
   const unreadInList = useMemo(
     () => notifications.filter((item) => !item.isRead).length,
@@ -122,7 +171,7 @@ const Notifications = () => {
     <div className="space-y-7">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-[22px] font-semibold tracking-[-0.025em] text-foreground">
+          <h1 className="text-[22px] font-semibold tracking-tight text-foreground">
             Notifications
           </h1>
           <p className="mt-1.5 text-[13px] leading-6 text-muted-foreground">
@@ -161,12 +210,15 @@ const Notifications = () => {
           <span className="flex size-11 items-center justify-center rounded-xl bg-rose-100 text-rose-600 dark:bg-rose-500/12 dark:text-rose-400">
             <AlertCircle className="size-5" />
           </span>
+
           <h2 className="mt-4 text-base font-semibold tracking-[-0.01em] text-foreground">
             Couldn't load your notifications
           </h2>
+
           <p className="mt-2 max-w-sm text-[13px] leading-6 text-muted-foreground">
             {error}
           </p>
+
           <Button
             type="button"
             variant="outline"
@@ -184,9 +236,11 @@ const Notifications = () => {
           <span className="flex size-11 items-center justify-center rounded-xl bg-muted text-muted-foreground">
             <BellOff className="size-5" />
           </span>
+
           <h2 className="mt-4 text-base font-semibold tracking-[-0.01em] text-foreground">
             No notifications
           </h2>
+
           <p className="mt-2 max-w-sm text-[13px] leading-6 text-muted-foreground">
             You're all caught up. Activity from your groups will show up here.
           </p>
@@ -202,25 +256,23 @@ const Notifications = () => {
             return (
               <li
                 key={item._id}
-                className={`flex items-start gap-3 px-5 py-4 ${
-                  item.isRead ? "" : "notif-unread"
-                }`}
+                className={`flex items-start gap-3 px-5 py-4 ${item.isRead ? "" : "notif-unread"
+                  }`}
               >
                 <span
                   aria-hidden="true"
-                  className={`mt-[7px] size-2 shrink-0 rounded-full ${
-                    item.isRead ? "bg-transparent" : "bg-[var(--auth-accent)]"
-                  }`}
+                  className={`mt-1.5 size-2 shrink-0 rounded-full ${item.isRead ? "bg-transparent" : "bg-(--auth-accent)"
+                    }`}
                 />
 
                 <div className="min-w-0 flex-1">
                   <p
-                    className={`text-[13px] leading-6 ${
-                      item.isRead ? "text-muted-foreground" : "text-foreground"
-                    }`}
+                    className={`text-[13px] leading-6 ${item.isRead ? "text-muted-foreground" : "text-foreground"
+                      }`}
                   >
                     {item.message}
                   </p>
+
                   <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     {groupName && (
                       <>
