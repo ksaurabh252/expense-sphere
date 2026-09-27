@@ -23,21 +23,33 @@ const calculateNetBalances = async (groupId, groupMembers) => {
   // Calculate balances from expenses
   expenses.forEach((exp) => {
     const payer = exp.paidBy.toString();
-    const splitAmount = exp.amount / exp.participants.length;
 
     // Add the full amount to the person who paid
     if (balances[payer]) {
       balances[payer].net += exp.amount;
     }
 
-    // Subtract each participant's share
-    exp.participants.forEach((part) => {
-      const partId = part.toString();
+    // Saved splits already cover equal, unequal and percentage. Only fall
+    // back to an equal division for expenses saved without splits.
+    if (exp.splits && exp.splits.length > 0) {
+      exp.splits.forEach((split) => {
+        const splitUserId = split.userId.toString();
 
-      if (balances[partId]) {
-        balances[partId].net -= splitAmount;
-      }
-    });
+        if (balances[splitUserId]) {
+          balances[splitUserId].net -= split.amount;
+        }
+      });
+    } else {
+      const splitAmount = exp.amount / exp.participants.length;
+
+      exp.participants.forEach((part) => {
+        const partId = part.toString();
+
+        if (balances[partId]) {
+          balances[partId].net -= splitAmount;
+        }
+      });
+    }
   });
 
   // Calculate balances from completed settlements
