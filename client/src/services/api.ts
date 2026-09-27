@@ -59,7 +59,7 @@ export const clearSession = () => {
 /* Core request                                                               */
 /* ------------------------------------------------------------------------- */
 
-async function request<T>(
+export async function request<T>(
   endpoint: string,
   options: RequestInit = {},
 ): Promise<T> {
@@ -153,10 +153,10 @@ export interface Group {
   balance: number;
 }
 
-const toText = (value: unknown, fallback = ""): string =>
+export const toText = (value: unknown, fallback = ""): string =>
   typeof value === "string" && value.trim() ? value : fallback;
 
-const toNumber = (value: unknown, fallback = 0): number => {
+export const toNumber = (value: unknown, fallback = 0): number => {
   const parsed = typeof value === "string" ? Number(value) : value;
   return typeof parsed === "number" && Number.isFinite(parsed)
     ? parsed
@@ -175,7 +175,7 @@ const toUnreadCount = (value: unknown, fallback = 0): number => {
 };
 
 /** Normalises a raw mongoose group document into the shape the UI expects. */
-const normalizeGroup = (raw: any, index: number): Group => {
+export const normalizeGroup = (raw: any, index: number): Group => {
   const members = Array.isArray(raw?.members) ? raw.members : [];
 
   return {
@@ -244,6 +244,8 @@ export async function getGroupsWithBalances(userId: string): Promise<Group[]> {
 
 export interface AppNotification {
   _id: string;
+  /** Who the notification is for — socket events are broadcast to the group. */
+  userId: string;
   groupId: string;
   message: string;
   type: string;
