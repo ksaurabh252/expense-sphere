@@ -2,6 +2,7 @@ const expenseModel = require("../models/expense.model");
 const groupModel = require("../models/group.model");
 const userModel = require("../models/user.model");
 const notificationModel = require("../models/notification.model");
+const settlementModel = require("../models/settlement.model");
 
 // Create a new expense with equal, unequal, or percentage split
 const createExpense = async (req, res) => {
@@ -383,10 +384,11 @@ const getGroupBalances = async (req, res) => {
         message: "User is not in the group",
       });
 
-    // Find all expenses belonging to this group
+    // Find all expenses and settlements belonging to this group
     const expenses = await expenseModel.find({
       groupId,
     });
+    const settlements = await settlementModel.find({ groupId });
 
     // Step-by-step balance calculation
     const balances = {};
@@ -399,16 +401,34 @@ const getGroupBalances = async (req, res) => {
     // Calculate the balance for each expense
     expenses.forEach((exp) => {
       const payer = exp.paidBy.toString();
-      const splitAmount = exp.amount / exp.participants.length;
 
       // Credit the full amount to the person who paid
       balances[payer] = (balances[payer] || 0) + exp.amount;
 
-      // Deduct each participant's share from their balance
-      exp.participants.forEach((participant) => {
-        const participantId = participant.toString();
-        balances[participantId] = (balances[participantId] || 0) - splitAmount;
-      });
+      // Saved splits already cover equal, unequal and percentage. Only fall
+      // back to an equal division for expenses saved without splits.
+      if (exp.splits && exp.splits.length > 0) {
+        exp.splits.forEach((split) => {
+          const splitUserId = split.userId.toString();
+          balances[splitUserId] = (balances[splitUserId] || 0) - split.amount;
+        });
+      } else {
+        const splitAmount = exp.amount / exp.participants.length;
+        exp.participants.forEach((participant) => {
+          const participantId = participant.toString();
+          balances[participantId] =
+            (balances[participantId] || 0) - splitAmount;
+        });
+      }
+    });
+
+    // Settlements pay money back, so they move the same net balance
+    settlements.forEach((settlement) => {
+      const sender = settlement.from.toString();
+      const receiver = settlement.to.toString();
+
+      balances[sender] = (balances[sender] || 0) + settlement.amount;
+      balances[receiver] = (balances[receiver] || 0) - settlement.amount;
     });
 
     // Convert the balances object into an array
